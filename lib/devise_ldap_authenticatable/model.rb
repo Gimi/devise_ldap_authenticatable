@@ -50,7 +50,6 @@ module Devise
         # Authenticate a user based on configured attribute keys. Returns the
         # authenticated user if it's valid or nil.
         def authenticate_with_ldap(attributes={}) 
-          debugger if defined?(debugger)
           @login_with = ::Devise.authentication_keys.first
           return nil unless attributes[@login_with].present? 
 
