@@ -16,6 +16,15 @@ module Devise
   # Add valid users to database
   mattr_accessor :ldap_create_user
   @@ldap_create_user = false
+
+  # Update user attributes. Valid values are true, false, or a hash which is an attribute map.
+  mattr_accessor :ldap_update_with_user_entry
+  @@ldap_update_with_user_entry = false
+  # @@ldap_update_with_user_entry = {:email => :mail, :name => :displayname}
+
+  # LDAP entry encoding
+  mattr_accessor :ldap_encoding
+  @@ldap_encoding = 'utf-8'
   
   mattr_accessor :ldap_config
   # @@ldap_config = "#{Rails.root}/config/ldap.yml"

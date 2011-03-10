@@ -50,6 +50,7 @@ module Devise
         # Authenticate a user based on configured attribute keys. Returns the
         # authenticated user if it's valid or nil.
         def authenticate_with_ldap(attributes={}) 
+          debugger if defined?(debugger)
           @login_with = ::Devise.authentication_keys.first
           return nil unless attributes[@login_with].present? 
 
@@ -63,6 +64,17 @@ module Devise
           end
                     
           if resource.try(:valid_ldap_authentication?, attributes[:password])
+            if map = Devise.ldap_update_with_user_entry
+              entry = Devise::LdapAdapter.find_user(attributes[@login_with], attributes[:password])
+
+              map = resource.attribute_names.inject({}) { |m, n| m[n] = n; m } unless map.is_a?(Hash)
+              map.each { |user_att, entry_att|
+                value = entry[entry_att].first
+                value.force_encoding Devise.ldap_encoding if value.respond_to?(:force_encoding)
+                resource[user_att] = value
+              }
+            end
+
             resource.save if resource.new_record?
             return resource
           else

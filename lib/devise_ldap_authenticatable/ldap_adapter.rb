@@ -4,32 +4,56 @@ module Devise
 
   module LdapAdapter
     
-    def self.valid_credentials?(login, password_plaintext)
-      options = {:login => login, 
-                 :password => password_plaintext, 
-                 :ldap_auth_username_builder => ::Devise.ldap_auth_username_builder,
-                 :admin => ::Devise.ldap_use_admin_to_bind}
-                 
-      resource = LdapConnect.new(options)
-      resource.authorized?
-    end
-    
-    def self.update_password(login, new_password)
-      resource = LdapConnect.new(:login => login, :new_password => new_password)
-      resource.change_password! if new_password.present? 
-    end
-    
-    def self.get_groups(login)
-      ldap = LdapConnect.new(:login => login)
-      ldap.user_groups
+    class << self
+      def valid_credentials?(login, password_plaintext)
+        connect(login, password_plaintext).authorized?
+      end
+
+      def find_user(login, password_plaintext)
+        connect(login, password_plaintext).find_ldap_user
+      end
+      
+      def update_password(login, new_password)
+        resource = LdapConnect.new(:login => login, :new_password => new_password)
+        resource.change_password! if new_password.present? 
+      end
+      
+      def get_groups(login)
+        ldap = LdapConnect.new(:login => login)
+        ldap.user_groups
+      end
+
+      private
+
+      def connect(login, password_plaintext)
+        options = {:login => login,
+                   :password => password_plaintext, 
+                   :ldap_auth_username_builder => ::Devise.ldap_auth_username_builder,
+                   :admin => ::Devise.ldap_use_admin_to_bind}
+                   
+        LdapConnect.new(options)
+      end
     end
 
     class LdapConnect
+      def self.ldap_config
+        @@ldap_config ||= YAML.load(ERB.new(File.read(::Devise.ldap_config || "#{Rails.root}/config/ldap.yml")).result)[Rails.env]
+      end
+      
+      def self.admin
+        ldap = LdapConnect.new(:admin => true).ldap
+        
+        unless ldap.bind
+          DeviseLdapAuthenticatable::Logger.send("Cannot bind to admin LDAP user")
+          raise DeviseLdapAuthenticatable::LdapException, "Cannot connect to admin LDAP user"
+        end
+        
+        return ldap
+      end
 
       attr_reader :ldap, :login
 
       def initialize(params = {})
-        ldap_config = YAML.load(ERB.new(File.read(::Devise.ldap_config || "#{Rails.root}/config/ldap.yml")).result)[Rails.env]
         ldap_options = params
         ldap_options[:encryption] = :simple_tls if ldap_config["ssl"]
 
@@ -49,6 +73,10 @@ module Devise
         @login = params[:login]
         @password = params[:password]
         @new_password = params[:new_password]
+      end
+
+      def ldap_config
+        self.class.ldap_config
       end
 
       def dn
@@ -132,23 +160,12 @@ module Devise
         admin_ldap.search(:filter => filter, :base => @group_base).collect(&:dn)
       end
       
-      private
-      
-      def self.admin
-        ldap = LdapConnect.new(:admin => true).ldap
-        
-        unless ldap.bind
-          DeviseLdapAuthenticatable::Logger.send("Cannot bind to admin LDAP user")
-          raise DeviseLdapAuthenticatable::LdapException, "Cannot connect to admin LDAP user"
-        end
-        
-        return ldap
-      end
-      
-      def find_ldap_user(ldap)
+      def find_ldap_user(ldap = self.ldap)
         DeviseLdapAuthenticatable::Logger.send("Finding user: #{dn}")
         ldap.search(:base => dn, :scope => Net::LDAP::SearchScope_BaseObject).try(:first)
       end
+
+      private
       
       def update_ldap(ops)
         operations = []
